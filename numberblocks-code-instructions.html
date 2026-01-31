@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Trophy, PlusCircle, RotateCcw, Zap, Sparkles, Layout, Trash2, Scissors, Star, RefreshCw } from 'lucide-react';
 
-// --- UTILIDADES DE SONIDO (Sintetizador Web Audio) ---
+/**
+ * 📂 ARCHIVO SUGERIDO: src/hooks/useAudio.js
+ * Este bloque contiene la lógica del sintetizador. 
+ * En un proyecto organizado, lo exportarías como un Hook personalizado.
+ */
 const playSound = (type) => {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
@@ -73,6 +77,18 @@ const playSound = (type) => {
   }
 };
 
+/**
+ * 📂 ARCHIVO SUGERIDO: src/utils/ids.js
+ * Utilidad simple para generar IDs únicos compatibles con selectores CSS.
+ */
+const generateId = (prefix = 'id') => {
+  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+};
+
+/**
+ * 📂 ARCHIVO SUGERIDO: src/utils/colors.js
+ * Contiene la definición visual de cada Numberblock basada en su valor.
+ */
 const getBlockStyle = (value) => {
   if (value <= 10) {
     const config = {
@@ -95,40 +111,47 @@ const getBlockStyle = (value) => {
   return { bg: `hsl(${hue}, 85%, 75%)`, border: value % 10 === 0 ? '#FF0000' : 'rgba(0,0,0,0.12)' };
 };
 
-// Obtener todos los anchos válidos (que mantengan altura >= 2)
+/**
+ * 📂 ARCHIVO SUGERIDO: src/utils/geometry.js
+ * Lógica de validación de formas (divisores) y geometría adaptativa.
+ */
 const getValidWidths = (value) => {
   if (value === 1) return [1];
   const widths = [];
-  const maxWidth = value >= 12 ? 6 : 4;
-  for (let i = 1; i <= Math.min(value, maxWidth); i++) {
-    if (value % i === 0 && (value / i) >= 2) {
-      widths.push(i);
+  const MAX_HEIGHT = 12;
+  const MAX_WIDTH = 10;
+  const minWidthRequiredByHeight = Math.ceil(value / MAX_HEIGHT);
+  for (let i = minWidthRequiredByHeight; i <= Math.min(value, MAX_WIDTH); i++) {
+    if (value % i === 0) {
+      const h = value / i;
+      if (h <= MAX_HEIGHT && h >= 2) widths.push(i);
     }
   }
-  return widths.length > 0 ? widths : [1];
+  if (widths.length === 0) {
+      if (value <= MAX_WIDTH) return [1]; 
+      return [minWidthRequiredByHeight || 2];
+  }
+  return widths;
 };
 
+/**
+ * 📂 ARCHIVO SUGERIDO: src/components/NumberBlock.jsx
+ * Componente visual que representa a un Numberblock.
+ * Deberás importar: getBlockStyle, getValidWidths, RefreshCw, Scissors, Star.
+ */
 const NumberBlock = React.memo(({ value, x, y, id, width, onPointerDown, onDoubleClick, onRotate, highlight = false }) => {
   const style = getBlockStyle(value);
   const cols = width || 1;
   const rows = Math.ceil(value / cols);
 
-  let blockSize = 34;
-  if (rows > 10) blockSize = 20;
-  else if (rows > 7) blockSize = 24;
-  else if (rows > 5) blockSize = 28;
-  else if (value > 20) blockSize = 30;
+  let blockSize = 38;
+  if (value > 80) blockSize = 18;
+  else if (value > 50) blockSize = 22;
+  else if (value > 25) blockSize = 28;
+  else if (value > 10) blockSize = 32;
 
   const validWidths = getValidWidths(value);
   const canTransform = validWidths.length > 1;
-
-  // Manejador de scroll para simular pellizco/rotación
-  const handleWheel = (e) => {
-    if (canTransform) {
-      e.preventDefault();
-      onRotate(id);
-    }
-  };
 
   return (
     <div
@@ -138,8 +161,7 @@ const NumberBlock = React.memo(({ value, x, y, id, width, onPointerDown, onDoubl
       data-bsize={blockSize}
       onPointerDown={(e) => onPointerDown(e, id)}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(id); }}
-      onWheel={handleWheel}
-      className={`group absolute touch-none select-none flex flex-col-reverse items-center transition-all ${value === 100 ? 'z-50' : 'z-10'}`}
+      className={`group absolute touch-none select-none flex flex-col-reverse items-center animate-in zoom-in duration-300 ${value === 100 ? 'z-50' : 'z-10'}`}
       style={{
         left: x,
         top: y,
@@ -151,18 +173,15 @@ const NumberBlock = React.memo(({ value, x, y, id, width, onPointerDown, onDoubl
       {(highlight || value === 100) && (
         <div className={`absolute inset-x-[-50px] inset-y-[-40px] blur-3xl rounded-full animate-pulse z-0 ${value === 100 ? 'bg-red-400/20' : 'bg-white/60'}`} />
       )}
-
       <div className={`relative z-10 transition-all ${highlight ? 'scale-105' : ''}`}>
-        {/* Botón de Transformación (Visible en hover) */}
         {canTransform && (
           <button
             onPointerDown={(e) => { e.stopPropagation(); onRotate(id); }}
-            className="absolute -right-6 top-0 bg-white shadow-md rounded-full p-1 border border-slate-200 text-sky-500 hover:bg-sky-50 hover:scale-110 active:scale-95 transition-all opacity-0 group-hover:opacity-100 z-50"
+            className="absolute -right-8 top-0 bg-white shadow-md rounded-full p-1.5 border border-slate-200 text-sky-500 hover:bg-sky-50 hover:scale-110 active:scale-95 transition-all opacity-0 group-hover:opacity-100 z-50 pointer-events-auto"
           >
             <RefreshCw size={14} />
           </button>
         )}
-
         <div 
           className="grid gap-0" 
           style={{ 
@@ -175,7 +194,6 @@ const NumberBlock = React.memo(({ value, x, y, id, width, onPointerDown, onDoubl
           {Array.from({ length: value }).map((_, i) => {
             const faceIndex = Math.floor(cols / 2);
             const isFaceBlock = i === faceIndex; 
-
             return (
               <div
                 key={i}
@@ -207,13 +225,11 @@ const NumberBlock = React.memo(({ value, x, y, id, width, onPointerDown, onDoubl
           })}
         </div>
       </div>
-      
-      <div className={`mb-1 font-black pointer-events-none z-20 text-black flex items-center gap-1 ${value >= 100 ? 'text-2xl' : 'text-base'}`}>
+      <div className="mb-1 font-black pointer-events-none z-20 text-black flex items-center gap-1 text-base">
         {value === 100 && <Star size={16} className="fill-red-500 text-red-500 animate-spin-slow" />}
         {value}
         {value === 100 && <Star size={16} className="fill-red-500 text-red-500 animate-spin-slow" />}
       </div>
-
       {value > 1 && (
         <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           <Scissors size={14} className="text-slate-400 rotate-90" />
@@ -223,6 +239,11 @@ const NumberBlock = React.memo(({ value, x, y, id, width, onPointerDown, onDoubl
   );
 });
 
+/**
+ * 📂 ARCHIVO SUGERIDO: src/App.jsx
+ * Orquestador principal del juego.
+ * Deberás importar: NumberBlock, playSound, generateId, getValidWidths e iconos de Lucide.
+ */
 const App = () => {
   const [blocks, setBlocks] = useState([]);
   const [target, setTarget] = useState(10);
@@ -235,55 +256,64 @@ const App = () => {
   const nextLevel = useCallback(() => {
     const newTarget = Math.floor(Math.random() * 91) + 10;
     setTarget(newTarget);
-    setBlocks([
-      { id: 'b1', value: 1, x: 80, y: 350, width: 1 },
-      { id: 'b2', value: 1, x: 150, y: 350, width: 1 }
-    ]);
+    setTimeout(() => {
+        if (!containerRef.current) return;
+        const h = containerRef.current.getBoundingClientRect().height;
+        setBlocks([
+          { id: generateId('b'), value: 1, x: 80, y: h - 10, width: 1 },
+          { id: generateId('b'), value: 1, x: 150, y: h - 10, width: 1 }
+        ]);
+    }, 50);
     setHighlightId(null);
   }, []);
 
   useEffect(() => { nextLevel(); }, [nextLevel]);
 
-  const rotateBlock = (id) => {
+  const rotateBlock = useCallback((id) => {
     playSound('transform');
     setBlocks(prev => prev.map(b => {
       if (b.id !== id) return b;
       const validWidths = getValidWidths(b.value);
       if (validWidths.length <= 1) return b;
-      
       const currentIndex = validWidths.indexOf(b.width);
       const nextIndex = (currentIndex + 1) % validWidths.length;
       return { ...b, width: validWidths[nextIndex] };
     }));
-  };
+  }, []);
 
   const spawnBlock = (val) => {
     playSound('spawn');
     const rect = containerRef.current.getBoundingClientRect();
+    const widths = getValidWidths(val);
+    const initialWidth = widths[0];
+    const pixelWidth = initialWidth * (val > 10 ? 28 : 38);
+    const safeX = Math.max(pixelWidth/2 + 20, Math.min(rect.width - pixelWidth/2 - 20, Math.random() * rect.width));
+
     const newBlock = {
-      id: `block-${Date.now()}`,
+      id: generateId('block'),
       value: val,
-      x: Math.random() * (rect.width - 150) + 75,
-      y: rect.height - 40,
-      width: getValidWidths(val)[0]
+      x: safeX,
+      y: rect.height - 10, 
+      width: initialWidth
     };
     setBlocks(prev => [...prev, newBlock]);
   };
 
-  const splitBlock = (id) => {
+  const splitBlock = useCallback((id) => {
     playSound('split');
     setBlocks(prev => {
       const blockToSplit = prev.find(b => b.id === id);
       if (!blockToSplit || blockToSplit.value <= 1) return prev;
       const newValue = blockToSplit.value - 1;
-      const updatedBlock = { ...blockToSplit, value: newValue, width: getValidWidths(newValue)[0] };
-      const newOne = { id: `split-${Date.now()}`, value: 1, x: blockToSplit.x + 40, y: blockToSplit.y, width: 1 };
+      const widths = getValidWidths(newValue);
+      const updatedBlock = { ...blockToSplit, value: newValue, width: widths[0] };
+      const newOne = { id: generateId('split'), value: 1, x: blockToSplit.x + 50, y: blockToSplit.y, width: 1 };
       return [...prev.filter(b => b.id !== id), updatedBlock, newOne];
     });
-  };
+  }, []);
 
   const checkCollision = (dragId, x, y) => {
-    const otherElements = Array.from(document.querySelectorAll(`[id^="block-"]:not(#block-${dragId})`));
+    const otherElements = Array.from(document.querySelectorAll(`[id^="block-"]:not([id="block-${dragId}"])`));
     for (let el of otherElements) {
       const rect = el.getBoundingClientRect();
       const containerRect = containerRef.current.getBoundingClientRect();
@@ -295,8 +325,8 @@ const App = () => {
       const heightUnits = Math.ceil(val / widthUnits);
       const pxWidth = widthUnits * bSize;
       const pxHeight = heightUnits * bSize;
-      const thresholdX = (pxWidth / 2) + 20; 
-      const thresholdY = 20; 
+      const thresholdX = (pxWidth / 2) + 25; 
+      const thresholdY = 25; 
       const isInsideX = Math.abs(x - elX) < thresholdX;
       const isInsideY = y > (elY - pxHeight - thresholdY) && y < (elY + thresholdY);
       if (isInsideX && isInsideY) return el.id.replace('block-', '');
@@ -305,64 +335,73 @@ const App = () => {
   };
 
   const handlePointerDown = (e, id) => {
+    if (e.target.closest('button')) return;
     const blockElement = document.getElementById(`block-${id}`);
     if (!blockElement) return;
     const rect = containerRef.current.getBoundingClientRect();
     const blockData = blocks.find(b => b.id === id);
+    if (!blockData) return;
     draggingRef.current = { id, element: blockElement, offsetX: e.clientX - rect.left - blockData.x, offsetY: e.clientY - rect.top - blockData.y, currentX: blockData.x, currentY: blockData.y };
-    blockElement.style.zIndex = "1000";
+    blockElement.style.zIndex = "2000";
     blockElement.style.transition = "none";
     blockElement.setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e) => {
     const state = draggingRef.current;
-    if (!state.id) return;
+    if (!state.id || !state.element) return;
     const rect = containerRef.current.getBoundingClientRect();
-    state.currentX = e.clientX - rect.left - state.offsetX;
-    state.currentY = e.clientY - rect.top - state.offsetY;
+    const bSize = parseInt(state.element.getAttribute('data-bsize'));
+    const cols = parseInt(state.element.getAttribute('data-width'));
+    const pixelWidth = cols * bSize;
+    let nextX = e.clientX - rect.left - state.offsetX;
+    let nextY = e.clientY - rect.top - state.offsetY;
+    nextX = Math.max(pixelWidth/2, Math.min(rect.width - pixelWidth/2, nextX));
+    state.currentX = nextX;
+    state.currentY = nextY;
     state.element.style.left = `${state.currentX}px`;
     state.element.style.top = `${state.currentY}px`;
     const targetId = checkCollision(state.id, state.currentX, state.currentY);
-    setHighlightId(targetId);
+    if (targetId !== highlightId) setHighlightId(targetId);
   };
 
   const handlePointerUp = (e) => {
     const state = draggingRef.current;
     if (!state.id) return;
+    if (state.element) state.element.releasePointerCapture(e.pointerId);
     const targetId = checkCollision(state.id, state.currentX, state.currentY);
     if (targetId) {
       const sourceBlock = blocks.find(b => b.id === state.id);
       const targetBlock = blocks.find(b => b.id === targetId);
-      const newValue = sourceBlock.value + targetBlock.value;
-      
-      if (newValue <= 100) {
-        playSound('merge');
-        const remainingBlocks = blocks.filter(b => b.id !== state.id && b.id !== targetId);
-        const mergedBlock = {
-          id: `merged-${Date.now()}`,
-          value: newValue,
-          x: targetBlock.x,
-          y: targetBlock.y,
-          width: getValidWidths(newValue)[0]
-        };
-        setBlocks([...remainingBlocks, mergedBlock]);
-        if (!isFreeMode && newValue === target) {
-          playSound('success');
-          setScore(s => s + 1);
-          setTimeout(() => { setBlocks([]); setTimeout(nextLevel, 400); }, 1500);
+      if (sourceBlock && targetBlock) {
+        const newValue = sourceBlock.value + targetBlock.value;
+        if (newValue <= 100) {
+          playSound('merge');
+          const remainingBlocks = blocks.filter(b => b.id !== state.id && b.id !== targetId);
+          const widths = getValidWidths(newValue);
+          const mergedBlock = { id: generateId('merged'), value: newValue, x: targetBlock.x, y: targetBlock.y, width: widths[0] };
+          setBlocks([...remainingBlocks, mergedBlock]);
+          if (!isFreeMode && newValue === target) {
+            playSound('success');
+            setScore(s => s + 1);
+            setTimeout(() => { setBlocks([]); setTimeout(nextLevel, 400); }, 1500);
+          }
         }
       }
     } else {
       setBlocks(prev => prev.map(b => b.id === state.id ? { ...b, x: state.currentX, y: state.currentY } : b));
     }
-    state.element.style.zIndex = "10";
-    state.element.style.transition = "transform 0.2s, left 0.2s, top 0.2s";
-    state.id = null; setHighlightId(null);
+    if (state.element) {
+        state.element.style.zIndex = "10";
+        state.element.style.transition = "transform 0.2s, left 0.2s, top 0.2s";
+    }
+    draggingRef.current = { id: null, element: null, offsetX: 0, offsetY: 0, currentX: 0, currentY: 0 };
+    setHighlightId(null);
   };
 
   return (
     <div className="flex flex-col h-screen bg-sky-50 overflow-hidden font-sans select-none">
+      {/* 📂 COMPONENTE: src/components/Header.jsx */}
       <div className="bg-white p-2 flex justify-between items-center shadow-sm border-b-2 border-sky-100 z-50">
         <div className="flex items-center gap-2">
           {!isFreeMode && (
@@ -371,43 +410,43 @@ const App = () => {
               <p className="text-sm font-black text-slate-800 leading-none">{score}</p>
             </div>
           )}
-          <button onClick={() => setIsFreeMode(!isFreeMode)} className={`px-2 py-1 rounded-lg border text-[9px] font-bold uppercase transition-all ${isFreeMode ? 'bg-purple-100 border-purple-300 text-purple-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+          <button onClick={() => setIsFreeMode(!isFreeMode)} className="px-2 py-1 rounded-lg border text-[9px] font-bold uppercase transition-all bg-slate-50 border-slate-200 text-slate-500 active:bg-sky-100">
             {isFreeMode ? 'Libre' : 'Reto'}
           </button>
         </div>
         <div className={`px-4 py-1.5 rounded-full border flex items-center gap-2 shadow-inner transition-colors ${isFreeMode ? 'bg-purple-50 border-purple-200' : 'bg-yellow-100 border-yellow-300'}`}>
           <Sparkles className={isFreeMode ? 'text-purple-400' : 'text-yellow-600'} size={12} />
-          <span className={`text-[10px] font-black uppercase tracking-tight ${isFreeMode ? 'text-purple-700' : 'text-yellow-700'}`}>
-            {isFreeMode ? 'Explora formas hasta el 100' : `Objetivo: ${target}`}
+          <span className="text-[11px] font-black uppercase tracking-tight text-slate-700">
+            {isFreeMode ? '¡Suma hasta el 100!' : `Objetivo: ${target}`}
           </span>
         </div>
-        <button onClick={() => {setBlocks([]); nextLevel();}} className="p-1.5 bg-slate-50 rounded-full border border-slate-200 text-slate-500"><RotateCcw size={14} /></button>
+        <button onClick={() => {setBlocks([]); nextLevel();}} className="p-1.5 bg-slate-50 rounded-full border border-slate-200 text-slate-500 hover:bg-red-50 transition-colors"><RotateCcw size={14} /></button>
       </div>
 
-      <div ref={containerRef} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} className="flex-1 relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] overflow-hidden">
+      {/* ÁREA DE JUEGO */}
+      <div ref={containerRef} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} className="flex-1 relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] overflow-hidden pointer-events-auto">
         {blocks.map(block => (
           <NumberBlock key={block.id} id={block.id} value={block.value} width={block.width} x={block.x} y={block.y} onPointerDown={handlePointerDown} onDoubleClick={splitBlock} onRotate={rotateBlock} highlight={highlightId === block.id} />
         ))}
-        <div className="absolute bottom-0 w-full h-2 bg-green-500/10 pointer-events-none" />
+        <div className="absolute bottom-0 w-full h-2 bg-green-500/20 border-t border-green-500/30 pointer-events-none" />
       </div>
 
-      <div className="bg-white p-2 border-t border-slate-100 flex flex-col items-center gap-2 shadow-inner">
+      {/* 📂 COMPONENTE: src/components/GameFooter.jsx */}
+      <div className="bg-white p-2 border-t border-slate-100 flex flex-col items-center gap-2 shadow-inner z-50">
         <div className="flex gap-2">
-            <button onClick={() => spawnBlock(1)} className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-xl shadow-[0_3px_0_rgb(153,27,27)] active:translate-y-1 active:shadow-none transition-all">
-                <PlusCircle size={16} /> <span className="text-xs font-bold uppercase tracking-wide">Bloque 1</span>
+            <button onClick={() => spawnBlock(1)} className="flex items-center gap-2 bg-red-500 text-white px-5 py-3 rounded-2xl shadow-[0_4px_0_rgb(153,27,27)] active:translate-y-1 active:shadow-none transition-all">
+                <PlusCircle size={18} /> <span className="text-sm font-bold uppercase tracking-wide">Añadir 1</span>
             </button>
-            <button onClick={() => spawnBlock(10)} className="flex items-center gap-2 bg-white text-red-500 border-2 border-red-500 px-4 py-2 rounded-xl shadow-[0_3px_0_rgb(153,27,27)] active:translate-y-1 active:shadow-none transition-all">
-                <Zap size={16} /> <span className="text-xs font-bold uppercase tracking-wide">Bloque 10</span>
+            <button onClick={() => spawnBlock(10)} className="flex items-center gap-2 bg-white text-red-500 border-2 border-red-500 px-5 py-3 rounded-2xl shadow-[0_4px_0_rgb(153,27,27)] active:translate-y-1 active:shadow-none transition-all">
+                <Zap size={18} /> <span className="text-sm font-bold uppercase tracking-wide">Añadir 10</span>
             </button>
         </div>
-        <p className="text-[8px] font-bold text-slate-400 uppercase text-center">
-          Usa la rueda del ratón o el botón azul para cambiar la forma del bloque
-        </p>
       </div>
     </div>
   );
 };
 
 export default App;
+
 
 
