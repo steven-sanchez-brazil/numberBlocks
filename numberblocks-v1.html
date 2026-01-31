@@ -1,0 +1,365 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Trophy, PlusCircle, RotateCcw, Zap, Sparkles, Layout, Trash2, Scissors } from 'lucide-react';
+
+// Colores oficiales y estilos base extendidos hasta el 20
+const BLOCK_CONFIG = {
+  1: { bg: '#FF0000', text: 'black' },
+  2: { bg: '#FF8000', text: 'black' },
+  3: { bg: '#FFFF00', text: 'black' },
+  4: { bg: '#00FF00', text: 'black' },
+  5: { bg: '#00FFFF', text: 'black' },
+  6: { bg: '#8A2BE2', text: 'black' },
+  7: { bg: 'linear-gradient(to bottom, #ff0000, #ffff00, #00ff00, #0000ff, #8f00ff)', text: 'black' },
+  8: { bg: '#FF69B4', text: 'black' },
+  9: { bg: '#C0C0C0', text: 'black' },
+  10: { bg: '#FFFFFF', border: '#FF0000', text: 'black' },
+  11: { bg: '#FF9999', text: 'black' },
+  12: { bg: '#FFB266', text: 'black' },
+  13: { bg: '#FFFF99', text: 'black' },
+  14: { bg: '#99FF99', text: 'black' },
+  15: { bg: '#99FFFF', text: 'black' },
+  16: { bg: '#CC99FF', text: 'black', isSquare: true },
+  17: { bg: '#FF99FF', text: 'black' },
+  18: { bg: '#66B2FF', text: 'black' },
+  19: { bg: '#E0E0E0', text: 'black' },
+  20: { bg: '#FFFFFF', border: '#FF8000', text: '#FF8000' },
+};
+
+const getRandomWidth = (value) => {
+  if (value === 1) return 1;
+  const validDivisors = [];
+  const maxWidth = value >= 12 ? 5 : 4;
+
+  for (let i = 1; i <= Math.min(value, maxWidth); i++) {
+    if (value % i === 0) {
+      const height = value / i;
+      if (height >= 2) {
+        validDivisors.push(i);
+      }
+    }
+  }
+  
+  if (validDivisors.length === 0) return 1;
+  const complexDivisors = validDivisors.filter(d => d > 1);
+  const pool = (complexDivisors.length > 0 && Math.random() > 0.3) ? complexDivisors : validDivisors;
+  return pool[Math.floor(Math.random() * pool.length)];
+};
+
+const NumberBlock = React.memo(({ value, x, y, id, width, onPointerDown, onDoubleClick, highlight = false }) => {
+  const config = BLOCK_CONFIG[value] || { bg: '#f3f4f6', text: 'black' };
+  const cols = width || 1;
+
+  return (
+    <div
+      id={`block-${id}`}
+      data-value={value}
+      data-width={cols}
+      onPointerDown={(e) => onPointerDown(e, id)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onDoubleClick(id);
+      }}
+      className="absolute touch-none select-none flex flex-col-reverse items-center z-10"
+      style={{
+        left: x,
+        top: y,
+        transform: 'translate(-50%, -100%)',
+        cursor: 'grab',
+        transition: 'transform 0.15s cubic-bezier(0.2, 0, 0.2, 1)'
+      }}
+    >
+      {/* Brillo de fusión */}
+      {highlight && (
+        <div className="absolute inset-x-[-30px] inset-y-[-20px] bg-white/60 blur-2xl rounded-full animate-pulse z-0" />
+      )}
+
+      <div className={`relative z-10 transition-all ${highlight ? 'scale-110' : ''}`}>
+        <div 
+          className="grid gap-0" 
+          style={{ 
+            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            width: `${cols * 36}px`
+          }}
+        >
+          {Array.from({ length: value }).map((_, i) => {
+            const isFaceBlock = i === (value - 1); 
+            return (
+              <div
+                key={i}
+                className="w-9 h-9 border-[1.5px] relative flex items-center justify-center rounded-sm shadow-sm"
+                style={{ 
+                  background: config.bg,
+                  borderColor: config.border || 'rgba(0,0,0,0.15)',
+                }}
+              >
+                {isFaceBlock && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center scale-90">
+                    <div className="flex gap-0.5 mb-0.5">
+                      {value === 1 ? (
+                        <div className="w-2.5 h-2.5 bg-black rounded-full border border-white" />
+                      ) : (
+                        <>
+                          <div className="w-1.5 h-1.5 bg-black rounded-full border border-white" />
+                          <div className="w-1.5 h-1.5 bg-black rounded-full border border-white" />
+                        </>
+                      )}
+                    </div>
+                    <div className="w-4 h-1 bg-black/20 rounded-full" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
+      {/* Etiqueta de número */}
+      <div className="mb-0.5 font-black text-sm drop-shadow-sm pointer-events-none z-20 text-black">
+        {value}
+      </div>
+
+      {/* Indicador de "Separable" si es mayor a 1 */}
+      {value > 1 && (
+        <div className="absolute -top-6 bg-white/80 rounded-full p-0.5 shadow-sm border border-slate-200 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Scissors size={10} className="text-slate-400" />
+        </div>
+      )}
+    </div>
+  );
+});
+
+const App = () => {
+  const [blocks, setBlocks] = useState([]);
+  const [target, setTarget] = useState(5);
+  const [score, setScore] = useState(0);
+  const [highlightId, setHighlightId] = useState(null);
+  const [isFreeMode, setIsFreeMode] = useState(false);
+  
+  const containerRef = useRef(null);
+  const draggingRef = useRef({
+    id: null, element: null, offsetX: 0, offsetY: 0, currentX: 0, currentY: 0
+  });
+
+  const nextLevel = useCallback(() => {
+    const newTarget = Math.floor(Math.random() * 18) + 3;
+    setTarget(newTarget);
+    setBlocks([
+      { id: 'b1', value: 1, x: 80, y: 350, width: 1 },
+      { id: 'b2', value: 1, x: 200, y: 350, width: 1 }
+    ]);
+    setHighlightId(null);
+  }, []);
+
+  useEffect(() => {
+    nextLevel();
+  }, [nextLevel]);
+
+  const spawnOne = () => {
+    const rect = containerRef.current.getBoundingClientRect();
+    const newBlock = {
+      id: `block-${Date.now()}`,
+      value: 1,
+      x: Math.random() * (rect.width - 80) + 40,
+      y: rect.height - 30,
+      width: 1
+    };
+    setBlocks(prev => [...prev, newBlock]);
+  };
+
+  const splitBlock = (id) => {
+    setBlocks(prev => {
+      const blockToSplit = prev.find(b => b.id === id);
+      if (!blockToSplit || blockToSplit.value <= 1) return prev;
+
+      const newValue = blockToSplit.value - 1;
+      const updatedBlock = {
+        ...blockToSplit,
+        value: newValue,
+        width: getRandomWidth(newValue)
+      };
+
+      const newOne = {
+        id: `split-one-${Date.now()}`,
+        value: 1,
+        x: blockToSplit.x + 50, // Lo spawneamos un poco a la derecha
+        y: blockToSplit.y,
+        width: 1
+      };
+
+      return [...prev.filter(b => b.id !== id), updatedBlock, newOne];
+    });
+  };
+
+  const clearBoard = () => setBlocks([]);
+
+  const checkCollision = (dragId, x, y) => {
+    const otherElements = Array.from(document.querySelectorAll(`[id^="block-"]:not(#block-${dragId})`));
+    for (let el of otherElements) {
+      const rect = el.getBoundingClientRect();
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const elX = rect.left - containerRect.left + rect.width / 2;
+      const elY = rect.bottom - containerRect.top;
+      const val = parseInt(el.getAttribute('data-value'));
+      const widthUnits = parseInt(el.getAttribute('data-width'));
+      const heightUnits = val / widthUnits;
+      const pxWidth = widthUnits * 36;
+      const pxHeight = heightUnits * 36;
+      const thresholdX = (pxWidth / 2) + 25; 
+      const thresholdY = 25; 
+      const isInsideX = Math.abs(x - elX) < thresholdX;
+      const isInsideY = y > (elY - pxHeight - thresholdY) && y < (elY + thresholdY);
+      if (isInsideX && isInsideY) return el.id.replace('block-', '');
+    }
+    return null;
+  };
+
+  const handlePointerDown = (e, id) => {
+    const blockElement = document.getElementById(`block-${id}`);
+    if (!blockElement) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const blockData = blocks.find(b => b.id === id);
+    draggingRef.current = {
+      id, element: blockElement,
+      offsetX: e.clientX - rect.left - blockData.x,
+      offsetY: e.clientY - rect.top - blockData.y,
+      currentX: blockData.x, currentY: blockData.y
+    };
+    blockElement.style.zIndex = "100";
+    blockElement.style.transition = "none";
+    blockElement.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e) => {
+    const state = draggingRef.current;
+    if (!state.id) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    state.currentX = e.clientX - rect.left - state.offsetX;
+    state.currentY = e.clientY - rect.top - state.offsetY;
+    state.element.style.left = `${state.currentX}px`;
+    state.element.style.top = `${state.currentY}px`;
+    const targetId = checkCollision(state.id, state.currentX, state.currentY);
+    setHighlightId(targetId);
+  };
+
+  const handlePointerUp = (e) => {
+    const state = draggingRef.current;
+    if (!state.id) return;
+    const targetId = checkCollision(state.id, state.currentX, state.currentY);
+    if (targetId) {
+      const sourceBlock = blocks.find(b => b.id === state.id);
+      const targetBlock = blocks.find(b => b.id === targetId);
+      const newValue = sourceBlock.value + targetBlock.value;
+      
+      if (newValue <= 20) {
+        const remainingBlocks = blocks.filter(b => b.id !== state.id && b.id !== targetId);
+        const mergedBlock = {
+          id: `merged-${Date.now()}`,
+          value: newValue,
+          x: targetBlock.x,
+          y: targetBlock.y,
+          width: getRandomWidth(newValue)
+        };
+        setBlocks([...remainingBlocks, mergedBlock]);
+        if (!isFreeMode && newValue === target) {
+          setScore(s => s + 1);
+          setTimeout(() => {
+            setBlocks([]);
+            setTimeout(nextLevel, 400);
+          }, 500);
+        }
+      } else {
+        setBlocks(prev => [...prev]);
+      }
+    } else {
+      setBlocks(prev => prev.map(b => 
+        b.id === state.id ? { ...b, x: state.currentX, y: state.currentY } : b
+      ));
+    }
+    state.element.style.zIndex = "10";
+    state.element.style.transition = "transform 0.2s, left 0.2s, top 0.2s";
+    state.id = null;
+    setHighlightId(null);
+  };
+
+  return (
+    <div className="flex flex-col h-screen bg-sky-50 overflow-hidden font-sans select-none">
+      {/* Header */}
+      <div className="bg-white p-2 flex justify-between items-center shadow-sm border-b-2 border-sky-100 z-50">
+        <div className="flex items-center gap-2">
+          {!isFreeMode && (
+            <div className="flex items-center gap-1.5">
+              <div className="bg-orange-500 p-1 rounded-lg">
+                <Trophy className="text-white" size={12} />
+              </div>
+              <p className="text-sm font-black text-slate-800 leading-none">{score}</p>
+            </div>
+          )}
+          <button 
+            onClick={() => setIsFreeMode(!isFreeMode)}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all text-[9px] font-bold uppercase ${isFreeMode ? 'bg-purple-100 border-purple-300 text-purple-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}
+          >
+            <Layout size={10} />
+            {isFreeMode ? 'Libre' : 'Reto'}
+          </button>
+        </div>
+
+        <div className={`px-4 py-1.5 rounded-full border flex items-center gap-2 shadow-inner transition-colors ${isFreeMode ? 'bg-purple-50 border-purple-200' : 'bg-yellow-100 border-yellow-300'}`}>
+          <Sparkles className={isFreeMode ? 'text-purple-400' : 'text-yellow-600'} size={12} />
+          <span className={`text-[11px] font-black uppercase tracking-tight ${isFreeMode ? 'text-purple-700' : 'text-yellow-700'}`}>
+            {isFreeMode ? 'Modo de Juego Libre' : `Objetivo: ${target}`}
+          </span>
+        </div>
+
+        <div className="flex gap-1">
+          {isFreeMode && (
+            <button onClick={clearBoard} className="p-1.5 bg-red-50 hover:bg-red-100 rounded-full border border-red-200 text-red-500 transition-all">
+              <Trash2 size={14} />
+            </button>
+          )}
+          <button onClick={nextLevel} className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded-full border border-slate-200 text-slate-500 transition-all active:scale-90">
+            <RotateCcw size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Play Area */}
+      <div ref={containerRef} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} className="flex-1 relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] overflow-hidden">
+        <div className="absolute top-2 left-0 right-0 text-center pointer-events-none z-0">
+           <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] opacity-40">¡Suma o resta bloques!</p>
+        </div>
+        
+        {blocks.map(block => (
+          <NumberBlock
+            key={block.id}
+            id={block.id}
+            value={block.value}
+            width={block.width}
+            x={block.x}
+            y={block.y}
+            onPointerDown={handlePointerDown}
+            onDoubleClick={splitBlock}
+            highlight={highlightId === block.id}
+          />
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div className="bg-white p-2 border-t border-slate-100 flex flex-col items-center gap-1 shadow-inner">
+        <button onClick={spawnOne} className="group relative flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-5 py-2.5 rounded-2xl shadow-[0_3px_0_rgb(153,27,27)] active:shadow-none active:translate-y-1 transition-all">
+          <PlusCircle size={18} />
+          <span className="text-base font-black italic tracking-wide uppercase">Añadir "1"</span>
+          <Zap size={14} className="text-yellow-400 fill-yellow-400 animate-pulse" />
+        </button>
+        <div className="flex flex-col items-center">
+            <p className="text-[8px] font-bold text-slate-400 uppercase text-center">
+              Doble clic en un bloque para restarle 1
+            </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default App;
+
+
